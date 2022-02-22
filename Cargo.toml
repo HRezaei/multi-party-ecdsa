@@ -81,6 +81,12 @@ name = "gg18_sign_client"
 name = "gg18_keygen_client"
 
 [[example]]
+name = "gg20_sign_online_stage"
+
+[[example]]
+name = "gg20_sign_offline_stages"
+
+[[example]]
 name = "common"
 crate-type = ["lib"]
 
