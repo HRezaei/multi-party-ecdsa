@@ -1,4 +1,4 @@
-/**
+/*
  * This file implements the last online round of gg20 tss sign algorithm.
  * It is based on kzen-curv v0.9 and without use of round based framework.
  */

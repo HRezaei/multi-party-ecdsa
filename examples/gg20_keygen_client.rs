@@ -1,5 +1,4 @@
-/**
- *
+/*
  * This file contains the gg20 implementation of tss keygen using kzen-curv v0.9
  * without use of round based framework.
  */

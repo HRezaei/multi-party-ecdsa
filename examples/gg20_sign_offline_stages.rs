@@ -1,4 +1,4 @@
-/**
+/*
  * This file implements the first five offline rounds of gg20 tss sign algorithm.
  * It uses kzen-curv v0.9 and doesn't use round based framework.
  */
