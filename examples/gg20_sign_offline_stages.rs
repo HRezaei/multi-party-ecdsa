@@ -14,7 +14,7 @@ use paillier::*;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{env, fs, time};
-use curv::arithmetic::Zero;
+use curv::arithmetic::{Converter, Zero};
 use curv::elliptic::curves::{Point, Scalar, Secp256k1};
 use zk_paillier::zkproofs::DLogStatement;
 
@@ -25,8 +25,7 @@ use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::orchestrate::{
     SignStage1Input, SignStage2Input, SignStage3Input, SignStage4Input, SignStage5Input,
     SignStage6Input
 };
-//use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::orchestrate::SignStage1Input;
-//use multi_party_ecdsa::protocols::multi_party_ecdsa::gg_2020::orchestrate_old::{sign_stage2, sign_stage3, sign_stage4, sign_stage5, sign_stage6, sign_stage7, SignStage1Input, SignStage2Input, SignStage3Input, SignStage4Input, SignStage5Input, SignStage6Input, SignStage7Input};
+mod hd_keys;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct ParamsFile {
@@ -76,7 +75,7 @@ fn main() {
     // read key file
     let data = fs::read_to_string(env::args().nth(2).unwrap())
         .expect("Unable to load keys, did you run keygen first? ");
-    let keypair: PartyKeyPair = serde_json::from_str(&data).unwrap();
+    let mut keypair: PartyKeyPair = serde_json::from_str(&data).unwrap();
 
     //read parameters:
     let data = fs::read_to_string("params.json")
@@ -89,6 +88,68 @@ fn main() {
         PartySignup { number, uuid } => (number, uuid),
     };
     println!("number: {:?}, uuid: {:?}", party_num_int, uuid);
+
+    let path = "0/4/39";
+    let chain_code = Scalar::<Secp256k1>::from(1u16);
+    let sign_at_path = true;
+
+    // Get root pub key or HD pub key at specified path
+    let (f_l_new, y_sum) = match path.is_empty() {
+        true => (Scalar::<Secp256k1>::zero(), keypair.y_sum_s),
+        false => {
+            let path_vector: Vec<BigInt> = path
+                .split('/')
+                .map(|s| BigInt::from_str_radix(s.trim(), 10).unwrap())
+                .collect();
+            let chain_code= Point::<Secp256k1>::generator().to_point() * chain_code;
+            let (y_sum_child, f_l_new) = hd_keys::get_hd_key(&keypair.y_sum_s, path_vector.clone(), chain_code);
+            (f_l_new, y_sum_child.clone())
+        }
+    };
+
+    keypair.y_sum_s = y_sum;
+
+    if sign_at_path == true {
+        // optimize!
+        let g: Point<Secp256k1> = Point::<Secp256k1>::generator().to_point();
+        // apply on first commitment for leader (leader is party with num=1)
+        let com_zero_new = keypair.vss_scheme_vec_s[0].commitments[0].clone() + g * f_l_new.clone();
+        // println!("old zero: {:?}, new zero: {:?}", vss_scheme_vec[0].commitments[0], com_zero_new);
+        // get iterator of all commitments and skip first zero commitment
+        let mut com_iter_unchanged = keypair.vss_scheme_vec_s[0].commitments.iter();
+        com_iter_unchanged.next().unwrap();
+        // iterate commitments and inject changed commitments in the beginning then aggregate into vector
+        let com_vec_new = (0..keypair.vss_scheme_vec_s[1].commitments.len())
+            .map(|i| {
+                if i == 0 {
+                    com_zero_new.clone()
+                } else {
+                    com_iter_unchanged.next().unwrap().clone()
+                }
+            })
+            .collect::<Vec<Point<Secp256k1>>>();
+        let new_vss = VerifiableSS {
+            parameters: keypair.vss_scheme_vec_s[0].parameters.clone(),
+            commitments: com_vec_new,
+        };
+        // replace old vss_scheme for leader with new one at position 0
+        //    println!("comparing vectors: \n{:?} \nand \n{:?}", vss_scheme_vec[0], new_vss);
+
+        keypair.vss_scheme_vec_s.remove(0);
+        keypair.vss_scheme_vec_s.insert(0, new_vss);
+        //    println!("NEW VSS VECTOR: {:?}", vss_scheme_vec);
+    }
+
+    if sign_at_path == true {
+        if party_num_int == 1 {
+            // update u_i and x_i for leader
+            keypair.party_keys_s.u_i = keypair.party_keys_s.u_i + f_l_new.clone();
+            keypair.shared_keys.x_i = keypair.shared_keys.x_i + f_l_new;
+        } else {
+            // only update x_i for non-leaders
+            keypair.shared_keys.x_i = keypair.shared_keys.x_i + f_l_new.clone();
+        }
+    }
 
     // round 0: collect signers IDs
     assert!(broadcast(

@@ -26,7 +26,7 @@ use curv::cryptographic_primitives::commitments::traits::Commitment;
 use curv::cryptographic_primitives::proofs::sigma_correct_homomorphic_elgamal_enc::*;
 use curv::cryptographic_primitives::proofs::sigma_dlog::DLogProof;
 use curv::cryptographic_primitives::secret_sharing::feldman_vss::VerifiableSS;
-use curv::elliptic::curves::{secp256_k1::Secp256k1, Curve, Point, Scalar};
+use curv::elliptic::curves::{secp256_k1::Secp256k1, Point, Scalar};
 use curv::BigInt;
 use sha2::Sha256;
 
@@ -56,9 +56,9 @@ pub struct Parameters {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Keys<E: Curve = Secp256k1> {
-    pub u_i: Scalar<E>,
-    pub y_i: Point<E>,
+pub struct Keys {
+    pub u_i: Scalar<Secp256k1>,
+    pub y_i: Point<Secp256k1>,
     pub dk: DecryptionKey,
     pub ek: EncryptionKey,
     pub party_index: usize,
